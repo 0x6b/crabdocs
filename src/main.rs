@@ -154,7 +154,6 @@ struct CrateInfo {
     description: Option<String>,
     downloads: u64,
     newest_version: String,
-    documentation: Option<String>,
 }
 
 async fn fetch_html(client: &Client, url: &str) -> Result<Html> {
@@ -231,15 +230,13 @@ async fn search_crates(query: &str, per_page: u32, sort: SortOrder, page: u32) -
     );
 
     for c in &data.crates {
-        println!("## {} ({})\n", c.name, c.newest_version);
-        println!("Description: {}\n", c.description.as_deref().unwrap_or("N/A"));
-        println!("Downloads: {}\n", c.downloads);
-        println!("Documentation: {}\n", c.documentation.as_deref().unwrap_or("N/A"));
-        println!("---\n");
+        println!("## {} ({}, {} downloads)\n", c.name, c.newest_version, c.downloads);
+        println!("{}", c.description.as_deref().unwrap_or("N/A"));
+        println!("See `docs-rs-cli show-readme {}`\n", c.name);
     }
 
     if data.meta.next_page.is_some() {
-        println!("*Use `--page {}` to see more results.*", page + 1);
+        println!("---\n\nUse `--page {}` to see more results.*", page + 1);
     }
 
     Ok(())
@@ -359,13 +356,9 @@ async fn search_in_crate(
                 return None;
             }
 
-            let link = if href.starts_with("http") {
-                href.to_string()
-            } else {
-                docs_rs_url(crate_name, version, &format!("{crate_name}/{href}"))
-            };
+            let item_path = format!("{crate_name}::{name}");
 
-            Some((name, item_type, link))
+            Some((name, item_type, item_path))
         })
         .collect();
 
@@ -378,8 +371,9 @@ async fn search_in_crate(
     if items.is_empty() {
         println!("No matching items found.");
     } else {
-        for (name, item_type, link) in items {
-            println!("## {name} ({item_type})\n\nLink: {link}\n\n---\n");
+        for (name, item_type, item_path) in items {
+            println!("- {name} ({item_type})");
+            println!("  `docs-rs-cli show-item-doc {crate_name} {item_type} {item_path}`\n");
         }
     }
     Ok(())
