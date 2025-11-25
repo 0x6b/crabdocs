@@ -1,7 +1,15 @@
+use std::collections::HashMap;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
+
+const USER_AGENT: &str = "docs-rs-cli";
+const ITEM_TYPE_PATTERNS: &[&str] = &[
+    "struct.", "trait.", "fn.", "enum.", "type.", "const.", "static.", "macro.", "union.",
+];
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum SortOrder {
@@ -13,13 +21,13 @@ enum SortOrder {
 }
 
 impl SortOrder {
-    fn as_api_param(&self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
-            SortOrder::Relevance => "relevance",
-            SortOrder::Downloads => "downloads",
-            SortOrder::RecentDownloads => "recent-downloads",
-            SortOrder::RecentUpdates => "recent-updates",
-            SortOrder::New => "new",
+            Self::Relevance => "relevance",
+            Self::Downloads => "downloads",
+            Self::RecentDownloads => "recent-downloads",
+            Self::RecentUpdates => "recent-updates",
+            Self::New => "new",
         }
     }
 }
@@ -39,20 +47,27 @@ enum ItemType {
 }
 
 impl ItemType {
-    fn as_url_segment(&self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
-            ItemType::Module => "module",
-            ItemType::Struct => "struct",
-            ItemType::Enum => "enum",
-            ItemType::Trait => "trait",
-            ItemType::Fn => "fn",
-            ItemType::Type => "type",
-            ItemType::Const => "const",
-            ItemType::Static => "static",
-            ItemType::Macro => "macro",
-            ItemType::Union => "union",
+            Self::Module => "module",
+            Self::Struct => "struct",
+            Self::Enum => "enum",
+            Self::Trait => "trait",
+            Self::Fn => "fn",
+            Self::Type => "type",
+            Self::Const => "const",
+            Self::Static => "static",
+            Self::Macro => "macro",
+            Self::Union => "union",
         }
     }
+}
+
+fn parse_item_type(link: &str) -> Option<&'static str> {
+    ITEM_TYPE_PATTERNS
+        .iter()
+        .find(|p| link.contains(*p))
+        .map(|p| &p[..p.len() - 1]) // Remove trailing dot
 }
 
 #[derive(Parser)]
@@ -65,59 +80,59 @@ struct Cli {
 enum Commands {
     /// Search for Rust crates by keywords on crates.io
     Search {
-        /// Search keywords for finding relevant crates
+        /// Search query
         query: String,
-        /// Number of results per page (default: 10, max: 100)
+        /// Number of results per page (max: 100)
         #[arg(short, long, default_value = "10")]
         per_page: u32,
         /// Sort order
         #[arg(short, long, value_enum, default_value = "relevance")]
         sort: SortOrder,
-        /// Page number (1-indexed, default: 1)
+        /// Page number (1-indexed)
         #[arg(long, default_value = "1")]
         page: u32,
     },
-    /// Get README/overview content of the specified crate
-    Readme {
-        /// Name of the crate
-        crate_name: String,
-        /// Specific version (defaults to latest)
-        #[arg(short, long, default_value = "latest")]
-        version: String,
-    },
-    /// Get documentation content of a specific item (module, struct, trait, enum, fn, etc.)
-    Item {
-        /// Name of the crate
-        crate_name: String,
-        /// Type of item
-        #[arg(value_enum)]
-        item_type: ItemType,
-        /// Full path of the item including module (e.g. wasmtime::component::Component)
-        item_path: String,
-        /// Specific version (defaults to latest)
-        #[arg(short, long, default_value = "latest")]
-        version: String,
-    },
-    /// List item types available in a crate (structs, traits, functions, etc.)
-    Items {
-        /// Name of the crate
-        crate_name: String,
-        /// Specific version (defaults to latest)
-        #[arg(short, long, default_value = "latest")]
-        version: String,
-    },
     /// Search for items within a crate's documentation
-    SearchIn {
-        /// Name of the crate to search
+    SearchItemsIn {
+        /// Name of the crate
         crate_name: String,
-        /// Search keyword (trait name, struct name, function name, etc.)
+        /// Search query
         query: String,
-        /// Specific version (defaults to latest)
+        /// Crate version
         #[arg(short, long, default_value = "latest")]
         version: String,
         /// Filter by item type
         #[arg(short = 't', long, value_enum)]
         item_type: Option<ItemType>,
+    },
+    /// Show README/overview content of the specified crate
+    ShowReadme {
+        /// Name of the crate
+        crate_name: String,
+        /// Crate version
+        #[arg(short, long, default_value = "latest")]
+        version: String,
+    },
+    /// Show summary of item types in a crate
+    ShowItemsSummary {
+        /// Name of the crate
+        crate_name: String,
+        /// Crate version
+        #[arg(short, long, default_value = "latest")]
+        version: String,
+    },
+    /// Show documentation of a specific item
+    ShowItemDoc {
+        /// Name of the crate
+        crate_name: String,
+        /// Type of the item
+        #[arg(value_enum)]
+        item_type: ItemType,
+        /// Path to the item (e.g., tokio::sync::Mutex)
+        item_path: String,
+        /// Crate version
+        #[arg(short, long, default_value = "latest")]
+        version: String,
     },
 }
 
@@ -142,10 +157,21 @@ struct CrateInfo {
     documentation: Option<String>,
 }
 
-struct SearchResult {
-    name: String,
-    item_type: String,
-    link: String,
+async fn fetch_html(client: &Client, url: &str) -> Result<Html> {
+    let text = client
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .context("Failed to send request")?
+        .text()
+        .await
+        .context("Failed to read response body")?;
+    Ok(Html::parse_document(&text))
+}
+
+fn docs_rs_url(crate_name: &str, version: &str, path: &str) -> String {
+    format!("https://docs.rs/{crate_name}/{version}/{path}")
 }
 
 #[tokio::main]
@@ -153,85 +179,62 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Search {
-            query,
-            per_page,
-            sort,
-            page,
-        } => search_crates(&query, per_page.min(100), sort, page.max(1)).await?,
-        Commands::Readme {
-            crate_name,
-            version,
-        } => get_readme(&crate_name, &version).await?,
-        Commands::Item {
-            crate_name,
-            item_type,
-            item_path,
-            version,
-        } => get_item(&crate_name, item_type, &item_path, &version).await?,
-        Commands::Items {
-            crate_name,
-            version,
-        } => list_items(&crate_name, &version).await?,
-        Commands::SearchIn {
-            crate_name,
-            query,
-            version,
-            item_type,
-        } => search_in_crate(&crate_name, &query, &version, item_type).await?,
+        Commands::Search { query, per_page, sort, page } => {
+            search_crates(&query, per_page.min(100), sort, page.max(1)).await
+        }
+        Commands::ShowReadme { crate_name, version } => {
+            get_readme(&crate_name, &version).await
+        }
+        Commands::ShowItemDoc { crate_name, item_type, item_path, version } => {
+            get_item(&crate_name, item_type, &item_path, &version).await
+        }
+        Commands::ShowItemsSummary { crate_name, version } => {
+            list_items(&crate_name, &version).await
+        }
+        Commands::SearchItemsIn { crate_name, query, version, item_type } => {
+            search_in_crate(&crate_name, &query, &version, item_type).await
+        }
     }
-
-    Ok(())
 }
 
 async fn search_crates(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Result<()> {
-    let client = reqwest::Client::new();
-    let response = client
+    let data: CratesResponse = Client::new()
         .get("https://crates.io/api/v1/crates")
         .query(&[
             ("q", query),
             ("per_page", &per_page.to_string()),
-            ("sort", sort.as_api_param()),
+            ("sort", sort.as_str()),
             ("page", &page.to_string()),
         ])
-        .header("User-Agent", "docs-rs-cli")
+        .header("User-Agent", USER_AGENT)
         .send()
         .await
-        .context("Failed to send request to crates.io")?;
-
-    let data: CratesResponse = response
+        .context("Failed to send request to crates.io")?
         .json()
         .await
         .context("Failed to parse crates.io response")?;
 
-    println!("# Crate Search Results for \"{}\"\n", query);
+    println!("# Crate Search Results for \"{query}\"\n");
 
     if data.crates.is_empty() {
-        println!("**Total:** 0 crates\n");
-        println!("No results found.");
+        println!("Total: 0 crates\n\nNo results found.");
         return Ok(());
     }
 
-    let total_pages = (data.meta.total as f64 / per_page as f64).ceil() as u64;
-    let start_index = (page - 1) * per_page + 1;
-    let end_index = start_index + data.crates.len() as u32 - 1;
+    let total_pages = data.meta.total.div_ceil(per_page as u64);
+    let start = (page - 1) * per_page + 1;
+    let end = start + data.crates.len() as u32 - 1;
 
     println!(
-        "**Total:** {} crates | **Page:** {}/{} | **Showing:** {}-{}\n",
-        data.meta.total, page, total_pages, start_index, end_index
+        "Total: {} crates | Page: {page}/{total_pages} | Showing: {start}-{end}\n",
+        data.meta.total
     );
 
-    for crate_info in data.crates {
-        println!("## {} ({})\n", crate_info.name, crate_info.newest_version);
-        println!(
-            "**Description:** {}\n",
-            crate_info.description.as_deref().unwrap_or("No description available")
-        );
-        println!("**Downloads:** {}\n", crate_info.downloads);
-        println!(
-            "**Documentation:** {}\n",
-            crate_info.documentation.as_deref().unwrap_or("N/A")
-        );
+    for c in &data.crates {
+        println!("## {} ({})\n", c.name, c.newest_version);
+        println!("Description: {}\n", c.description.as_deref().unwrap_or("N/A"));
+        println!("Downloads: {}\n", c.downloads);
+        println!("Documentation: {}\n", c.documentation.as_deref().unwrap_or("N/A"));
         println!("---\n");
     }
 
@@ -243,166 +246,72 @@ async fn search_crates(query: &str, per_page: u32, sort: SortOrder, page: u32) -
 }
 
 async fn get_readme(crate_name: &str, version: &str) -> Result<()> {
-    let url = format!(
-        "https://docs.rs/{}/{}/{}/index.html",
-        crate_name, version, crate_name
-    );
+    let url = docs_rs_url(crate_name, version, &format!("{crate_name}/index.html"));
+    let document = fetch_html(&Client::new(), &url).await?;
 
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "docs-rs-cli")
-        .send()
-        .await
-        .context("Failed to fetch documentation")?;
+    let selector = Selector::parse(".rustdoc .docblock").unwrap();
+    let content = document.select(&selector).next().map(|el| el.html());
 
-    let html = response
-        .text()
-        .await
-        .context("Failed to read response body")?;
-
-    let document = Html::parse_document(&html);
-    let docblock_selector = Selector::parse(".rustdoc .docblock").unwrap();
-
-    let content = document
-        .select(&docblock_selector)
-        .next()
-        .map(|el| el.html())
-        .unwrap_or_default();
-
-    if content.is_empty() {
-        println!("# {} Documentation\n", crate_name);
-        println!("No documentation content found at {}", url);
-        return Ok(());
+    println!("# {crate_name} Documentation\n");
+    match content {
+        Some(html) => println!("{}", html2md::parse_html(&html)),
+        None => println!("No documentation content found at {url}"),
     }
-
-    let markdown = html2md::parse_html(&content);
-
-    println!("# {} Documentation\n", crate_name);
-    println!("{}", markdown);
-
     Ok(())
 }
 
 async fn get_item(crate_name: &str, item_type: ItemType, item_path: &str, version: &str) -> Result<()> {
-    let type_segment = item_type.as_url_segment();
-    let url = if matches!(item_type, ItemType::Module) {
-        format!(
-            "https://docs.rs/{}/{}/{}/index.html",
-            crate_name,
-            version,
-            item_path.replace("::", "/")
-        )
+    let type_str = item_type.as_str();
+    let path = if matches!(item_type, ItemType::Module) {
+        format!("{}/index.html", item_path.replace("::", "/"))
     } else {
-        let path_parts: Vec<&str> = item_path.split("::").collect();
-        let item_name = path_parts.last().unwrap_or(&"");
-        let module_path = path_parts[..path_parts.len() - 1].join("/");
-        format!(
-            "https://docs.rs/{}/{}/{}/{}.{}.html",
-            crate_name, version, module_path, type_segment, item_name
-        )
+        let (module, name) = item_path.rsplit_once("::").unwrap_or(("", item_path));
+        format!("{}/{type_str}.{name}.html", module.replace("::", "/"))
     };
 
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "docs-rs-cli")
-        .send()
-        .await
-        .context("Failed to fetch documentation")?;
+    let url = docs_rs_url(crate_name, version, &path);
+    let document = fetch_html(&Client::new(), &url).await?;
 
-    let html = response
-        .text()
-        .await
-        .context("Failed to read response body")?;
+    let content = document
+        .select(&Selector::parse("#main-content").unwrap())
+        .next()
+        .map(|el| el.html())
+        .or_else(|| {
+            let mut html = String::new();
+            if let Some(decl) = document.select(&Selector::parse(".rustdoc .item-decl").unwrap()).next() {
+                html.push_str(&decl.html());
+            }
+            if let Some(doc) = document.select(&Selector::parse(".rustdoc .docblock").unwrap()).next() {
+                html.push_str(&doc.html());
+            }
+            (!html.is_empty()).then_some(html)
+        });
 
-    let document = Html::parse_document(&html);
-
-    let main_content_selector = Selector::parse("#main-content").unwrap();
-    let item_decl_selector = Selector::parse(".rustdoc .item-decl").unwrap();
-    let docblock_selector = Selector::parse(".rustdoc .docblock").unwrap();
-
-    let content = if let Some(main_content) = document.select(&main_content_selector).next() {
-        main_content.html()
-    } else {
-        let mut content = String::new();
-        if let Some(item_decl) = document.select(&item_decl_selector).next() {
-            content.push_str(&item_decl.html());
+    println!("# {item_path} ({type_str})\n");
+    match content {
+        Some(html) => {
+            println!("Documentation URL: {url}\n");
+            println!("{}", html2md::parse_html(&html));
         }
-        if let Some(docblock) = document.select(&docblock_selector).next() {
-            content.push_str(&docblock.html());
-        }
-        content
-    };
-
-    if content.is_empty() {
-        println!("# {} ({})\n", item_path, type_segment);
-        println!("No documentation content found at {}", url);
-        return Ok(());
+        None => println!("No documentation content found at {url}"),
     }
-
-    let markdown = html2md::parse_html(&content);
-
-    println!("# {} ({})\n", item_path, type_segment);
-    println!("**Documentation URL:** {}\n", url);
-    println!("{}", markdown);
-
     Ok(())
 }
 
 async fn list_items(crate_name: &str, version: &str) -> Result<()> {
-    let url = format!(
-        "https://docs.rs/{}/{}/{}/all.html",
-        crate_name, version, crate_name
-    );
+    let url = docs_rs_url(crate_name, version, &format!("{crate_name}/all.html"));
+    let document = fetch_html(&Client::new(), &url).await?;
 
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "docs-rs-cli")
-        .send()
-        .await
-        .context("Failed to fetch all.html")?;
+    let selector = Selector::parse("#main-content a").unwrap();
+    let mut counts: HashMap<&str, u32> = HashMap::new();
 
-    let html = response
-        .text()
-        .await
-        .context("Failed to read response body")?;
-
-    let document = Html::parse_document(&html);
-    let link_selector = Selector::parse("#main-content a").unwrap();
-
-    let mut counts = std::collections::HashMap::new();
-
-    for element in document.select(&link_selector) {
-        let item_link = element.value().attr("href").unwrap_or_default();
-
-        let item_type = if item_link.contains("struct.") {
-            "struct"
-        } else if item_link.contains("trait.") {
-            "trait"
-        } else if item_link.contains("fn.") {
-            "fn"
-        } else if item_link.contains("enum.") {
-            "enum"
-        } else if item_link.contains("type.") {
-            "type"
-        } else if item_link.contains("const.") {
-            "const"
-        } else if item_link.contains("static.") {
-            "static"
-        } else if item_link.contains("macro.") {
-            "macro"
-        } else if item_link.contains("union.") {
-            "union"
-        } else {
-            continue;
-        };
-
-        *counts.entry(item_type).or_insert(0) += 1;
+    for el in document.select(&selector) {
+        if let Some(item_type) = el.value().attr("href").and_then(parse_item_type) {
+            *counts.entry(item_type).or_default() += 1;
+        }
     }
 
-    println!("# Items in {}\n", crate_name);
+    println!("# Items in {crate_name}\n");
 
     if counts.is_empty() {
         println!("No items found.");
@@ -410,16 +319,14 @@ async fn list_items(crate_name: &str, version: &str) -> Result<()> {
     }
 
     let total: u32 = counts.values().sum();
-    println!("**Total:** {} items\n", total);
+    println!("Total: {total} items\n");
 
-    // Sort by count descending
     let mut sorted: Vec<_> = counts.into_iter().collect();
     sorted.sort_by(|a, b| b.1.cmp(&a.1));
 
     for (item_type, count) in sorted {
-        println!("- **{}:** {}", item_type, count);
+        println!("- {item_type}: {count}");
     }
-
     Ok(())
 }
 
@@ -427,102 +334,53 @@ async fn search_in_crate(
     crate_name: &str,
     query: &str,
     version: &str,
-    item_type_filter: Option<ItemType>,
+    filter: Option<ItemType>,
 ) -> Result<()> {
-    let url = format!(
-        "https://docs.rs/{}/{}/{}/all.html",
-        crate_name, version, crate_name
-    );
+    let url = docs_rs_url(crate_name, version, &format!("{crate_name}/all.html"));
+    let document = fetch_html(&Client::new(), &url).await?;
 
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "docs-rs-cli")
-        .send()
-        .await
-        .context("Failed to fetch all.html")?;
+    let selector = Selector::parse("#main-content a").unwrap();
+    let query_lower = query.to_lowercase();
 
-    let html = response
-        .text()
-        .await
-        .context("Failed to read response body")?;
+    let mut items: Vec<_> = document
+        .select(&selector)
+        .filter_map(|el| {
+            let name = el.text().collect::<String>().trim().to_string();
+            let href = el.value().attr("href")?;
+            let item_type = parse_item_type(href)?;
 
-    let document = Html::parse_document(&html);
-    let link_selector = Selector::parse("#main-content a").unwrap();
+            if name.is_empty() {
+                return None;
+            }
+            if !query.is_empty() && !name.to_lowercase().contains(&query_lower) {
+                return None;
+            }
+            if filter.is_some_and(|f| f.as_str() != item_type) {
+                return None;
+            }
 
-    let mut items: Vec<SearchResult> = Vec::new();
-
-    for element in document.select(&link_selector) {
-        let item_name = element.text().collect::<String>().trim().to_string();
-        let item_link = element.value().attr("href").unwrap_or_default();
-
-        if item_name.is_empty() || item_link.is_empty() {
-            continue;
-        }
-
-        let item_type = if item_link.contains("struct.") {
-            "struct"
-        } else if item_link.contains("trait.") {
-            "trait"
-        } else if item_link.contains("fn.") {
-            "fn"
-        } else if item_link.contains("enum.") {
-            "enum"
-        } else if item_link.contains("type.") {
-            "type"
-        } else if item_link.contains("const.") {
-            "const"
-        } else if item_link.contains("static.") {
-            "static"
-        } else if item_link.contains("macro.") {
-            "macro"
-        } else if item_link.contains("union.") {
-            "union"
-        } else {
-            continue;
-        };
-
-        let matches_query = query.is_empty()
-            || item_name.to_lowercase().contains(&query.to_lowercase());
-
-        let matches_type = item_type_filter
-            .map(|f| item_type == f.as_url_segment())
-            .unwrap_or(true);
-
-        if matches_query && matches_type {
-            let full_link = if item_link.starts_with("http") {
-                item_link.to_string()
+            let link = if href.starts_with("http") {
+                href.to_string()
             } else {
-                format!(
-                    "https://docs.rs/{}/{}/{}/{}",
-                    crate_name, version, crate_name, item_link
-                )
+                docs_rs_url(crate_name, version, &format!("{crate_name}/{href}"))
             };
 
-            items.push(SearchResult {
-                name: item_name,
-                item_type: item_type.to_string(),
-                link: full_link,
-            });
-        }
-    }
+            Some((name, item_type, link))
+        })
+        .collect();
 
-    // Deduplicate by name and type
-    items.dedup_by(|a, b| a.name == b.name && a.item_type == b.item_type);
+    items.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
 
     let search_term = if query.is_empty() { "all items" } else { query };
-    println!("# Search Results for \"{}\" in {}\n", search_term, crate_name);
+    println!("# Search Results for \"{search_term}\" in {crate_name}\n");
     println!("Found {} items\n", items.len());
 
     if items.is_empty() {
         println!("No matching items found.");
     } else {
-        for item in items {
-            println!("## {} ({})\n", item.name, item.item_type);
-            println!("**Link:** {}\n", item.link);
-            println!("---\n");
+        for (name, item_type, link) in items {
+            println!("## {name} ({item_type})\n\nLink: {link}\n\n---\n");
         }
     }
-
     Ok(())
 }
