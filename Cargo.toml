@@ -1,0 +1,14 @@
+[package]
+name = "docs-rs-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Search and browse docs.rs documentation from the command line"
+
+[dependencies]
+clap = { version = "4.5.53", features = ["derive"] }
+tokio = { version = "1.48.0", features = ["full"] }
+reqwest = { version = "0.12.24", features = ["json"] }
+scraper = "0.24.0"
+serde = { version = "1.0.228", features = ["derive"] }
+anyhow = "1.0.100"
+html2md = "0.2.15"
