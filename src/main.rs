@@ -179,24 +179,24 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Search { query, per_page, sort, page } => {
-            search_crates(&query, per_page.min(100), sort, page.max(1)).await
+            search(&query, per_page.min(100), sort, page.max(1)).await
         }
         Commands::ShowReadme { crate_name, version } => {
-            get_readme(&crate_name, &version).await
+            show_readme(&crate_name, &version).await
         }
         Commands::ShowItemDoc { crate_name, item_type, item_path, version } => {
-            get_item(&crate_name, item_type, &item_path, &version).await
+            show_item_doc(&crate_name, item_type, &item_path, &version).await
         }
         Commands::ShowItemsSummary { crate_name, version } => {
-            list_items(&crate_name, &version).await
+            show_items_summary(&crate_name, &version).await
         }
         Commands::SearchItemsIn { crate_name, query, version, item_type } => {
-            search_in_crate(&crate_name, &query, &version, item_type).await
+            search_items_in(&crate_name, &query, &version, item_type).await
         }
     }
 }
 
-async fn search_crates(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Result<()> {
+async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Result<()> {
     let data: CratesResponse = Client::new()
         .get("https://crates.io/api/v1/crates")
         .query(&[
@@ -242,7 +242,7 @@ async fn search_crates(query: &str, per_page: u32, sort: SortOrder, page: u32) -
     Ok(())
 }
 
-async fn get_readme(crate_name: &str, version: &str) -> Result<()> {
+async fn show_readme(crate_name: &str, version: &str) -> Result<()> {
     let url = docs_rs_url(crate_name, version, &format!("{crate_name}/index.html"));
     let document = fetch_html(&Client::new(), &url).await?;
 
@@ -257,7 +257,7 @@ async fn get_readme(crate_name: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-async fn get_item(crate_name: &str, item_type: ItemType, item_path: &str, version: &str) -> Result<()> {
+async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, version: &str) -> Result<()> {
     let type_str = item_type.as_str();
     let path = if matches!(item_type, ItemType::Module) {
         format!("{}/index.html", item_path.replace("::", "/"))
@@ -295,7 +295,7 @@ async fn get_item(crate_name: &str, item_type: ItemType, item_path: &str, versio
     Ok(())
 }
 
-async fn list_items(crate_name: &str, version: &str) -> Result<()> {
+async fn show_items_summary(crate_name: &str, version: &str) -> Result<()> {
     let url = docs_rs_url(crate_name, version, &format!("{crate_name}/all.html"));
     let document = fetch_html(&Client::new(), &url).await?;
 
@@ -327,7 +327,7 @@ async fn list_items(crate_name: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-async fn search_in_crate(
+async fn search_items_in(
     crate_name: &str,
     query: &str,
     version: &str,
