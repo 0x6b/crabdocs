@@ -1,5 +1,5 @@
 [package]
-name = "docs-rs-cli"
+name = "crabdocs"
 version = "0.1.0"
 edition = "2024"
 description = "Search and browse docs.rs documentation from the command line"

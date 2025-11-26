@@ -9,10 +9,10 @@ CLI tool for searching crates.io and browsing docs.rs documentation.
 
 ## Prerequisites
 
-Requires `docs-rs-cli` binary in PATH. If you don't have it, run
+Requires `crabdocs` binary in PATH. If you don't have it, run
 
 ```bash
-cargo install --git https://github.com/0x6b/docs-rs-cli
+cargo install --git https://github.com/0x6b/crabdocs
 ```
 
 ## Commands
@@ -20,7 +20,7 @@ cargo install --git https://github.com/0x6b/docs-rs-cli
 ### search - Find crates on crates.io
 
 ```bash
-docs-rs-cli search <QUERY> [-p PER_PAGE] [-s SORT] [--page N]
+crabdocs search <QUERY> [-p PER_PAGE] [-s SORT] [--page N]
 ```
 
 - `-p, --per-page`: Results per page (default: 10, max: 100)
@@ -28,35 +28,35 @@ docs-rs-cli search <QUERY> [-p PER_PAGE] [-s SORT] [--page N]
 - `--page`: Page number (1-indexed)
 
 ```bash
-docs-rs-cli search "async runtime" --sort downloads -p 5
+crabdocs search "async runtime" --sort downloads -p 5
 ```
 
 ### show-readme - Get crate overview
 
 ```bash
-docs-rs-cli show-readme <CRATE> [-v VERSION]
+crabdocs show-readme <CRATE> [-v VERSION]
 ```
 
 ```bash
-docs-rs-cli show-readme tokio
-docs-rs-cli show-readme serde -v 1.0.100
+crabdocs show-readme tokio
+crabdocs show-readme serde -v 1.0.100
 ```
 
 ### show-items-summary - List item type counts
 
 ```bash
-docs-rs-cli show-items-summary <CRATE> [-v VERSION]
+crabdocs show-items-summary <CRATE> [-v VERSION]
 ```
 
 ```bash
-docs-rs-cli show-items-summary tokio
+crabdocs show-items-summary tokio
 # Output: struct: 163, fn: 70, trait: 17, enum: 16, ...
 ```
 
 ### search-items-in - Find items in a crate
 
 ```bash
-docs-rs-cli search-items-in <CRATE> <QUERY> [-v VERSION] [-t TYPE]
+crabdocs search-items-in <CRATE> <QUERY> [-v VERSION] [-t TYPE]
 ```
 
 - `-t, --item-type`: struct | trait | fn | enum | type | const | static | macro | union | module
@@ -64,33 +64,34 @@ docs-rs-cli search-items-in <CRATE> <QUERY> [-v VERSION] [-t TYPE]
 Returns item names with ready-to-use `show-item-doc` commands:
 
 ```bash
-docs-rs-cli search-items-in tokio spawn
+crabdocs search-items-in tokio spawn
 # - task::spawn (fn)
-#   `docs-rs-cli show-item-doc tokio fn tokio::task::spawn`
+#   `crabdocs show-item-doc tokio fn tokio::task::spawn`
 # - task::spawn_blocking (fn)
-#   `docs-rs-cli show-item-doc tokio fn tokio::task::spawn_blocking`
+#   `crabdocs show-item-doc tokio fn tokio::task::spawn_blocking`
 
-docs-rs-cli search-items-in serde "" -t trait  # List all traits
+crabdocs search-items-in serde "" -t trait  # List all traits
 ```
 
 ### show-item-doc - Get item documentation
 
 ```bash
-docs-rs-cli show-item-doc <CRATE> <TYPE> <PATH> [-v VERSION]
+crabdocs show-item-doc <CRATE> <TYPE> <PATH> [-v VERSION]
 ```
 
 Types: module, struct, enum, trait, fn, type, const, static, macro, union
+Path: should be fully-qualified name i.e. not `task::spawn` but `tokio::task::spawn`
 
 ```bash
-docs-rs-cli show-item-doc tokio struct tokio::sync::Mutex
-docs-rs-cli show-item-doc tokio fn tokio::task::spawn
-docs-rs-cli show-item-doc serde trait serde::Serialize
+crabdocs show-item-doc tokio struct tokio::sync::Mutex
+crabdocs show-item-doc tokio fn tokio::task::spawn
+crabdocs show-item-doc serde trait serde::Serialize
 ```
 
 ## Typical Workflow
 
-1. Search for crates: `docs-rs-cli search "json parser"`
-2. Read crate overview: `docs-rs-cli show-readme serde_json`
-3. See available items: `docs-rs-cli show-items-summary serde_json`
-4. Find specific items: `docs-rs-cli search-items-in serde_json value`
-5. Read item docs: `docs-rs-cli show-item-doc serde_json enum serde_json::Value`
+1. Search for crates: `crabdocs search "json parser"`
+2. Read crate overview: `crabdocs show-readme serde_json`
+3. See available items: `crabdocs show-items-summary serde_json`
+4. Find specific items: `crabdocs search-items-in serde_json value`
+5. Read item docs: `crabdocs show-item-doc serde_json enum serde_json::Value`

@@ -1,17 +1,17 @@
-# docs-rs-cli
+# crabdocs
 
 A naive CLI tool for searching Rust crates on [crates.io](https://crates.io) and browsing documentation from [docs.rs](https://docs.rs).
 
 ## Installation
 
 ```console
-$ cargo install --git https://github.com/0x6b/docs-rs-cli
+$ cargo install --git https://github.com/0x6b/crabdocs
 ```
 
 ## Usage
 
 ```
-Usage: docs-rs-cli <COMMAND>
+Usage: crabdocs <COMMAND>
 
 Commands:
   search              Search for Rust crates by keywords on crates.io
@@ -26,19 +26,19 @@ Commands:
 
 ```console
 # Search for crates
-$ docs-rs-cli search "async runtime" --sort downloads -p 5
+$ crabdocs search "async runtime" --sort downloads -p 5
 
 # Show crate README
-$ docs-rs-cli show-readme tokio
+$ crabdocs show-readme tokio
 
 # List item types in a crate
-$ docs-rs-cli show-items-summary tokio
+$ crabdocs show-items-summary tokio
 
 # Search for items in a crate
-$ docs-rs-cli search-items-in tokio spawn
+$ crabdocs search-items-in tokio spawn
 
 # Show documentation for a specific item
-$ docs-rs-cli show-item-doc tokio struct tokio::sync::Mutex
+$ crabdocs show-item-doc tokio struct tokio::sync::Mutex
 ```
 
 ## Claude Code Skill
@@ -46,7 +46,7 @@ $ docs-rs-cli show-item-doc tokio struct tokio::sync::Mutex
 This repository includes a [Claude Code skill](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) for integration with Claude Code. You can install it with:
 
 ```console
-$ ln -s /path/to/docs-rs-cli/skills/browsing-rust-docs ~/.claude/skills/
+$ ln -s /path/to/crabdocs/skills/browsing-rust-docs ~/.claude/skills/
 ```
 
 See [Skills documentation](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) for more details.
