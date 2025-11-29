@@ -5,13 +5,14 @@ use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
+use strum::{AsRefStr, EnumIter, IntoEnumIterator};
+use std::cmp::Reverse;
 
-const USER_AGENT: &str = "docs-rs-cli";
-const ITEM_TYPE_PATTERNS: &[&str] = &[
-    "struct.", "trait.", "fn.", "enum.", "type.", "const.", "static.", "macro.", "union.",
-];
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+const USER_AGENT: &str = "crabdocs";
+
+#[derive(Clone, Copy, ValueEnum, AsRefStr)]
+#[strum(serialize_all = "kebab-case")]
 enum SortOrder {
     Relevance,
     Downloads,
@@ -20,19 +21,8 @@ enum SortOrder {
     New,
 }
 
-impl SortOrder {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Relevance => "relevance",
-            Self::Downloads => "downloads",
-            Self::RecentDownloads => "recent-downloads",
-            Self::RecentUpdates => "recent-updates",
-            Self::New => "new",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ValueEnum, AsRefStr, EnumIter)]
+#[strum(serialize_all = "lowercase")]
 enum ItemType {
     Module,
     Struct,
@@ -46,28 +36,8 @@ enum ItemType {
     Union,
 }
 
-impl ItemType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Module => "module",
-            Self::Struct => "struct",
-            Self::Enum => "enum",
-            Self::Trait => "trait",
-            Self::Fn => "fn",
-            Self::Type => "type",
-            Self::Const => "const",
-            Self::Static => "static",
-            Self::Macro => "macro",
-            Self::Union => "union",
-        }
-    }
-}
-
-fn parse_item_type(link: &str) -> Option<&'static str> {
-    ITEM_TYPE_PATTERNS
-        .iter()
-        .find(|p| link.contains(*p))
-        .map(|p| &p[..p.len() - 1]) // Remove trailing dot
+fn parse_item_type(link: &str) -> Option<ItemType> {
+    ItemType::iter().find(|t| link.contains(&format!("{}.", t.as_ref())))
 }
 
 #[derive(Parser)]
@@ -136,19 +106,19 @@ enum Commands {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct CratesResponse {
     crates: Vec<CrateInfo>,
     meta: CratesMeta,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct CratesMeta {
     total: u64,
     next_page: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct CrateInfo {
     name: String,
     description: Option<String>,
@@ -202,7 +172,7 @@ async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Resul
         .query(&[
             ("q", query),
             ("per_page", &per_page.to_string()),
-            ("sort", sort.as_str()),
+            ("sort", sort.as_ref()),
             ("page", &page.to_string()),
         ])
         .header("User-Agent", USER_AGENT)
@@ -232,7 +202,7 @@ async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Resul
     for c in &data.crates {
         println!("## {} ({}, {} downloads)\n", c.name, c.newest_version, c.downloads);
         println!("{}", c.description.as_deref().unwrap_or("N/A"));
-        println!("See `docs-rs-cli show-readme {}`\n", c.name);
+        println!("See `crabdocs show-readme {}`\n", c.name);
     }
 
     if data.meta.next_page.is_some() {
@@ -258,8 +228,8 @@ async fn show_readme(crate_name: &str, version: &str) -> Result<()> {
 }
 
 async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, version: &str) -> Result<()> {
-    let type_str = item_type.as_str();
-    let path = if matches!(item_type, ItemType::Module) {
+    let type_str = item_type.as_ref();
+    let path = if item_type == ItemType::Module {
         format!("{}/index.html", item_path.replace("::", "/"))
     } else {
         let (module, name) = item_path.rsplit_once("::").unwrap_or(("", item_path));
@@ -269,20 +239,14 @@ async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, v
     let url = docs_rs_url(crate_name, version, &path);
     let document = fetch_html(&Client::new(), &url).await?;
 
-    let content = document
-        .select(&Selector::parse("#main-content").unwrap())
-        .next()
-        .map(|el| el.html())
-        .or_else(|| {
-            let mut html = String::new();
-            if let Some(decl) = document.select(&Selector::parse(".rustdoc .item-decl").unwrap()).next() {
-                html.push_str(&decl.html());
-            }
-            if let Some(doc) = document.select(&Selector::parse(".rustdoc .docblock").unwrap()).next() {
-                html.push_str(&doc.html());
-            }
-            (!html.is_empty()).then_some(html)
-        });
+    let selectors = ["#main-content", ".rustdoc .item-decl, .rustdoc .docblock"];
+    let content = selectors.iter().find_map(|sel| {
+        let html: String = document
+            .select(&Selector::parse(sel).unwrap())
+            .map(|el| el.html())
+            .collect();
+        (!html.is_empty()).then_some(html)
+    });
 
     println!("# {item_path} ({type_str})\n");
     match content {
@@ -300,7 +264,7 @@ async fn show_items_summary(crate_name: &str, version: &str) -> Result<()> {
     let document = fetch_html(&Client::new(), &url).await?;
 
     let selector = Selector::parse("#main-content a").unwrap();
-    let mut counts: HashMap<&str, u32> = HashMap::new();
+    let mut counts: HashMap<ItemType, u32> = HashMap::new();
 
     for el in document.select(&selector) {
         if let Some(item_type) = el.value().attr("href").and_then(parse_item_type) {
@@ -319,10 +283,10 @@ async fn show_items_summary(crate_name: &str, version: &str) -> Result<()> {
     println!("Total: {total} items\n");
 
     let mut sorted: Vec<_> = counts.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|(_, count)| Reverse(*count));
 
     for (item_type, count) in sorted {
-        println!("- {item_type}: {count}");
+        println!("- {}: {count}", item_type.as_ref());
     }
     Ok(())
 }
@@ -352,17 +316,15 @@ async fn search_items_in(
             if !query.is_empty() && !name.to_lowercase().contains(&query_lower) {
                 return None;
             }
-            if filter.is_some_and(|f| f.as_str() != item_type) {
+            if filter.is_some_and(|f| f != item_type) {
                 return None;
             }
 
-            let item_path = format!("{crate_name}::{name}");
-
-            Some((name, item_type, item_path))
+            Some((name, item_type))
         })
         .collect();
 
-    items.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
+    items.dedup();
 
     let search_term = if query.is_empty() { "all items" } else { query };
     println!("# Search Results for \"{search_term}\" in {crate_name}\n");
@@ -371,9 +333,10 @@ async fn search_items_in(
     if items.is_empty() {
         println!("No matching items found.");
     } else {
-        for (name, item_type, item_path) in items {
-            println!("- {name} ({item_type})");
-            println!("  `docs-rs-cli show-item-doc {crate_name} {item_type} {item_path}`\n");
+        for (name, item_type) in &items {
+            let type_str = item_type.as_ref();
+            println!("- {name} ({type_str})");
+            println!("  `crabdocs show-item-doc {crate_name} {type_str} {crate_name}::{name}`\n");
         }
     }
     Ok(())
