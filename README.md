@@ -10,36 +10,11 @@ $ cargo install --git https://github.com/0x6b/crabdocs
 
 ## Usage
 
-```
-Usage: crabdocs <COMMAND>
-
-Commands:
-  search              Search for Rust crates by keywords on crates.io
-  search-items-in     Search for items within a crate's documentation
-  show-readme         Show README/overview content of the specified crate
-  show-items-summary  Show summary of item types in a crate
-  show-item-doc       Show documentation of a specific item
-  help                Print this message or the help of the given subcommand(s)
-```
-
-### Examples
-
 ```console
-# Search for crates
-$ crabdocs search "async runtime" --sort downloads -p 5
-
-# Show crate README
-$ crabdocs show-readme tokio
-
-# List item types in a crate
-$ crabdocs show-items-summary tokio
-
-# Search for items in a crate
-$ crabdocs search-items-in tokio spawn
-
-# Show documentation for a specific item
-$ crabdocs show-item-doc tokio struct tokio::sync::Mutex
+$ crabdocs --help
 ```
+
+For detailed command documentation and examples, see [skills/browsing-rust-docs/SKILL.md](skills/browsing-rust-docs/SKILL.md).
 
 ## Claude Code Skill
 

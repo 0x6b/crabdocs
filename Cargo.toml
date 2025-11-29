@@ -2,7 +2,7 @@
 name = "crabdocs"
 version = "0.1.0"
 edition = "2024"
-description = "Search and browse docs.rs documentation from the command line"
+description = "A naive CLI tool for searching Rust crates on crates.io and browsing documentation from docs.rs."
 
 [dependencies]
 anyhow = "1.0.100"
