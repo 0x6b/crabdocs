@@ -74,6 +74,22 @@ enum Commands {
         #[arg(long, default_value = "1")]
         page: u32,
     },
+    /// Show README/overview content of the specified crate
+    ShowReadme {
+        /// Name of the crate
+        crate_name: String,
+        /// Crate version
+        #[arg(short, long, default_value = "latest")]
+        version: String,
+    },
+    /// List item types in a crate
+    ListCrateItems {
+        /// Name of the crate
+        crate_name: String,
+        /// Crate version
+        #[arg(short, long, default_value = "latest")]
+        version: String,
+    },
     /// Search for items within a crate's documentation
     SearchItemsIn {
         /// Name of the crate
@@ -86,22 +102,6 @@ enum Commands {
         /// Filter by item type
         #[arg(short = 't', long, value_enum)]
         item_type: Option<ItemType>,
-    },
-    /// Show README/overview content of the specified crate
-    ShowReadme {
-        /// Name of the crate
-        crate_name: String,
-        /// Crate version
-        #[arg(short, long, default_value = "latest")]
-        version: String,
-    },
-    /// Show summary of item types in a crate
-    ShowItemsSummary {
-        /// Name of the crate
-        crate_name: String,
-        /// Crate version
-        #[arg(short, long, default_value = "latest")]
-        version: String,
     },
     /// Show documentation of a specific item
     ShowItemDoc {
@@ -171,9 +171,9 @@ async fn main() -> Result<()> {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_item_doc(&crate_name, item_type, &item_path, &version).await
         }
-        Commands::ShowItemsSummary { crate_name, version } => {
+        Commands::ListCrateItems { crate_name, version } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
-            show_items_summary(&crate_name, &version).await
+            list_crate_items(&crate_name, &version).await
         }
         Commands::SearchItemsIn { crate_name, query, version, item_type } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
@@ -275,7 +275,7 @@ async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, v
     Ok(())
 }
 
-async fn show_items_summary(crate_name: &str, version: &str) -> Result<()> {
+async fn list_crate_items(crate_name: &str, version: &str) -> Result<()> {
     let url = docs_rs_url(crate_name, version, &format!("{crate_name}/all.html"));
     let document = fetch_html(&Client::new(), &url).await?;
 

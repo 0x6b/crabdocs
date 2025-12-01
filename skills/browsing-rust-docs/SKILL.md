@@ -42,14 +42,14 @@ crabdocs show-readme tokio
 crabdocs show-readme serde -v 1.0.100
 ```
 
-### show-items-summary - List item type counts
+### list-crate-items - List item type counts
 
 ```bash
-crabdocs show-items-summary <CRATE> [-v VERSION]
+crabdocs list-crate-items <CRATE> [-v VERSION]
 ```
 
 ```bash
-crabdocs show-items-summary tokio
+crabdocs list-crate-items tokio
 # Output: struct: 163, fn: 70, trait: 17, enum: 16, ...
 ```
 
@@ -92,6 +92,6 @@ crabdocs show-item-doc serde trait serde::Serialize
 
 1. Search for crates: `crabdocs search "json parser"`
 2. Read crate overview: `crabdocs show-readme serde_json`
-3. See available items: `crabdocs show-items-summary serde_json`
+3. See available items: `crabdocs list-crate-items serde_json`
 4. Find specific items: `crabdocs search-items-in serde_json value`
 5. Read item docs: `crabdocs show-item-doc serde_json enum serde_json::Value`
