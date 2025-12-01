@@ -98,7 +98,7 @@ enum Commands {
         /// Type of the item
         #[arg(value_enum)]
         item_type: ItemType,
-        /// Path to the item (e.g., tokio::sync::Mutex)
+        /// Path to the item (e.g., `tokio::sync::Mutex`)
         item_path: String,
         /// Crate version
         #[arg(short, long, default_value = "latest")]
@@ -190,9 +190,9 @@ async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Resul
         return Ok(());
     }
 
-    let total_pages = data.meta.total.div_ceil(per_page as u64);
+    let total_pages = data.meta.total.div_ceil(u64::from(per_page));
     let start = (page - 1) * per_page + 1;
-    let end = start + data.crates.len() as u32 - 1;
+    let end = start + u32::try_from(data.crates.len())? - 1;
 
     println!(
         "Total: {} crates | Page: {page}/{total_pages} | Showing: {start}-{end}\n",

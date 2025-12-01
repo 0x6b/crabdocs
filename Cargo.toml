@@ -13,3 +13,6 @@ scraper = "0.24.0"
 serde = { version = "1.0.228", features = ["derive"] }
 strum = { version = "0.27.2", features = ["derive"] }
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }
+
+[lints.clippy]
+pedantic = "warn"
