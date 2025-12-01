@@ -40,6 +40,18 @@ fn parse_item_type(link: &str) -> Option<ItemType> {
     ItemType::iter().find(|t| link.contains(&format!("{}.", t.as_ref())))
 }
 
+fn normalize_crate_name(name: &str) -> String {
+    name.replace('-', "_")
+}
+
+fn normalize_crate_name_with_notice(name: &str) -> String {
+    let normalized = normalize_crate_name(name);
+    if normalized != name {
+        eprintln!("Note: Using '{normalized}' (normalized from '{name}')");
+    }
+    normalized
+}
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -152,15 +164,19 @@ async fn main() -> Result<()> {
             search(&query, per_page.min(100), sort, page.max(1)).await
         }
         Commands::ShowReadme { crate_name, version } => {
+            let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_readme(&crate_name, &version).await
         }
         Commands::ShowItemDoc { crate_name, item_type, item_path, version } => {
+            let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_item_doc(&crate_name, item_type, &item_path, &version).await
         }
         Commands::ShowItemsSummary { crate_name, version } => {
+            let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_items_summary(&crate_name, &version).await
         }
         Commands::SearchItemsIn { crate_name, query, version, item_type } => {
+            let crate_name = normalize_crate_name_with_notice(&crate_name);
             search_items_in(&crate_name, &query, &version, item_type).await
         }
     }
@@ -202,7 +218,7 @@ async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Resul
     for c in &data.crates {
         println!("## {} ({}, {} downloads)\n", c.name, c.newest_version, c.downloads);
         println!("{}", c.description.as_deref().unwrap_or("N/A"));
-        println!("See `crabdocs show-readme {}`\n", c.name);
+        println!("See `crabdocs show-readme {}`\n", normalize_crate_name(&c.name));
     }
 
     if data.meta.next_page.is_some() {
