@@ -5,9 +5,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
-use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 use std::cmp::Reverse;
-
+use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 const USER_AGENT: &str = "crabdocs";
 
@@ -160,22 +159,41 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Search { query, per_page, sort, page } => {
-            search(&query, per_page.min(100), sort, page.max(1)).await
-        }
-        Commands::ShowReadme { crate_name, version } => {
+        Commands::Search {
+            query,
+            per_page,
+            sort,
+            page,
+        } => search(&query, per_page.min(100), sort, page.max(1)).await,
+        Commands::ShowReadme {
+            crate_name,
+            version,
+        } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_readme(&crate_name, &version).await
         }
-        Commands::ShowItemDoc { crate_name, item_type, item_path, version } => {
+        Commands::ShowItemDoc {
+            crate_name,
+            item_type,
+            item_path,
+            version,
+        } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
             show_item_doc(&crate_name, item_type, &item_path, &version).await
         }
-        Commands::ListCrateItems { crate_name, version } => {
+        Commands::ListCrateItems {
+            crate_name,
+            version,
+        } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
             list_crate_items(&crate_name, &version).await
         }
-        Commands::SearchItemsIn { crate_name, query, version, item_type } => {
+        Commands::SearchItemsIn {
+            crate_name,
+            query,
+            version,
+            item_type,
+        } => {
             let crate_name = normalize_crate_name_with_notice(&crate_name);
             search_items_in(&crate_name, &query, &version, item_type).await
         }
@@ -216,9 +234,15 @@ async fn search(query: &str, per_page: u32, sort: SortOrder, page: u32) -> Resul
     );
 
     for c in &data.crates {
-        println!("## {} ({}, {} downloads)\n", c.name, c.newest_version, c.downloads);
+        println!(
+            "## {} ({}, {} downloads)\n",
+            c.name, c.newest_version, c.downloads
+        );
         println!("{}", c.description.as_deref().unwrap_or("N/A"));
-        println!("See `crabdocs show-readme {}`\n", normalize_crate_name(&c.name));
+        println!(
+            "See `crabdocs show-readme {}`\n",
+            normalize_crate_name(&c.name)
+        );
     }
 
     if data.meta.next_page.is_some() {
@@ -243,7 +267,45 @@ async fn show_readme(crate_name: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, version: &str) -> Result<()> {
+fn strip_noisy_sections(html: &str) -> String {
+    let document = Html::parse_fragment(html);
+
+    // Sections to remove entirely: synthetic implementations (auto traits) and blanket implementations
+    let noisy_ids = ["synthetic-implementations", "blanket-implementations"];
+
+    let mut result = html.to_string();
+
+    for id in noisy_ids {
+        // Find the section heading and its following list
+        let heading_sel = Selector::parse(&format!("#{id}")).unwrap();
+        let list_sel = Selector::parse(&format!("#{id}-list")).unwrap();
+
+        if let Some(el) = document.select(&heading_sel).next() {
+            result = result.replace(&el.html(), "");
+        }
+        if let Some(el) = document.select(&list_sel).next() {
+            result = result.replace(&el.html(), "");
+        }
+    }
+
+    // Unwrap <details> and <summary> tags (keep content, remove wrapper tags)
+    // These are used for collapsible sections that don't render well in markdown
+    let details_re = regex::Regex::new(r"<details[^>]*>").unwrap();
+    result = details_re.replace_all(&result, "").to_string();
+    result = result.replace("</details>", "");
+
+    let summary_re = regex::Regex::new(r"<summary[^>]*>.*?</summary>").unwrap();
+    result = summary_re.replace_all(&result, "").to_string();
+
+    result
+}
+
+async fn show_item_doc(
+    crate_name: &str,
+    item_type: ItemType,
+    item_path: &str,
+    version: &str,
+) -> Result<()> {
     let type_str = item_type.as_ref();
     let path = if item_type == ItemType::Module {
         format!("{}/index.html", item_path.replace("::", "/"))
@@ -267,8 +329,9 @@ async fn show_item_doc(crate_name: &str, item_type: ItemType, item_path: &str, v
     println!("# {item_path} ({type_str})\n");
     match content {
         Some(html) => {
+            let cleaned = strip_noisy_sections(&html);
             println!("Documentation URL: {url}\n");
-            println!("{}", html2md::parse_html(&html));
+            println!("{}", html2md::parse_html(&cleaned));
         }
         None => println!("No documentation content found at {url}"),
     }
