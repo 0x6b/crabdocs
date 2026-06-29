@@ -5,15 +5,15 @@ edition = "2024"
 description = "A naive CLI tool for searching Rust crates on crates.io and browsing documentation from docs.rs."
 
 [dependencies]
-anyhow = "1.0.100"
-clap = { version = "4.5.53", features = ["derive"] }
-html2md = "0.2.15"
-regex = "1.12.2"
-reqwest = { version = "0.12.24", features = ["json"] }
-scraper = "0.25.0"
-serde = { version = "1.0.228", features = ["derive"] }
-strum = { version = "0.27.2", features = ["derive"] }
-tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+html2md = "0.2"
+regex = "1.12"
+reqwest = { version = "0.13", features = ["json", "query"] }
+scraper = "0.27"
+serde = { version = "1.0", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros"] }
 
 [lints.clippy]
 pedantic = "warn"
